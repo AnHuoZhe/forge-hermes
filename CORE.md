@@ -150,6 +150,10 @@ xxx
 
 ---
 
+## 前端设计
+
+项目需要前端设计时，加载 `frontend-designer` 技能（独立仓库 AnHuoZhe/frontend-designer）。完成五层设计并产出 layer-decisions.json 后，回到本流程阶段D（TDD逐任务实现）。
+
 ## 通用规则
 
 - git commit格式：中文，"第X版，做了什么"
