@@ -1,51 +1,312 @@
-# 锻造 Forge for Hermes
+# Forge for Hermes
 
-> 原版 [Forge](https://github.com/AnHuoZhe/forge) 是 Codex 插件。本项目是专门为 Hermes Agent 移植的独立版本——用 `delegate_task` 替代 Codex 的 dispatch subagent，其余流程保持一致。
+把 AI 写代码，从一次调用变成一条有审查、有状态、有回退的开发流水线。
 
-把模糊需求锻造成可交付产品的 AI 辅助开发流程。核心定义（流程、审查体系、上下文工程机制）在 [CORE.md](./CORE.md)，Codex 版与 Hermes 版共用。
+Forge 是 Hermes Agent 的产品开发流程编排器。它不只是帮你生成代码，而是把从模糊想法到可交付项目的过程拆成明确阶段：先澄清需求，再设计架构，独立审查，按模块实现，验证结果，最后归档。
 
-## 与原版的关系
+Hermes 版本 5.1.0
 
-| | Forge (Codex) | Forge for Hermes |
-|---|---|---|
-| 运行平台 | Codex 桌面版 | Hermes Agent |
-| 子agent机制 | dispatch a subagent | delegate_task |
-| 技能格式 | Codex SKILL.md | Hermes SKILL.md |
-| 流程 | 七阶段 | 七阶段（相同） |
-| 审查体系 | 小审+架构审查+任务审查+中审+大审 | 小审+架构审查+任务审查+中审+大审（相同） |
-| 上下文工程 | 渐进式披露+状态栏+澄清持久化+复审模式 | 渐进式披露+状态栏+澄清持久化+复审模式（相同） |
+适用平台：Hermes Agent
 
-功能等价，适配不同平台。
+许可证：PolyForm Noncommercial 1.0.0
 
-## 前提条件
+项目地址：[AnHuoZhe/forge-hermes](https://github.com/AnHuoZhe/forge-hermes)
 
-- Hermes Agent 已安装（`hermes` 命令可用）
-- 有 API key（推荐 DeepSeek，便宜；或其他 provider）
-- 会基本 git 操作
+## 为什么需要 Forge
+
+AI 写一个函数已经很快，但完整项目最容易出问题的地方，往往不在代码生成本身：
+
+1. 需求还没澄清就开始实现。
+2. 架构没有经过独立审查。
+3. 模块单独看都能工作，组合后接口却对不上。
+4. Agent 审查自己的设计，容易把原来的推理合理化。
+5. 发现问题后不知道应该回到哪个阶段。
+6. 改完之后没有明确的通过标准。
+
+Forge 解决的不是“让 Agent 再写快一点”，而是把 AI 产品开发中写代码之前和写代码之后的工作组织起来。
+
+## Forge 是什么
+
+Forge 是一条 AI 产品开发流水线：
+
+需求澄清 → 架构设计 → 架构审查 → 任务拆解 → 逐模块实现 → 模块基础审查 → Agent 系统审查 → 归档
+
+它有三个核心特点：
+
+1. 阶段门禁：当前阶段没有通过，不能直接跳到下一阶段。
+2. 上下文隔离：审查 Agent 不继承设计过程，只读取最终产物和审查标准。
+3. 状态可恢复：阶段、任务、审查轮次、失败原因和锁定状态写入结构化文件。
+
+## 它和普通技能有什么不同
+
+普通 Agent 技能通常解决一个局部问题：写计划、写代码、审查代码或运行测试。
+
+Forge 解决的是这些技能之间的工序关系：
+
+什么时候澄清需求？
+
+什么时候设计架构？
+
+谁来审查设计？
+
+审查发现问题后回到哪里？
+
+什么时候允许开始写代码？
+
+模块完成后检查什么？
+
+系统审查通过的标准是什么？
+
+如果把单个技能看成工具，Forge 就是把工具放进正确工序的流水线。
+
+它也不是把所有能力塞进一个大提示词，而是通过状态文件、brief、独立子 Agent 和阶段报告，把流程变成可以追踪的结构。
+
+## 30 秒 Quick Start
+
+安装完成后，在目标项目目录启动 Hermes：
+
+```text
+hermes
+```
+
+加载 Forge 技能：
+
+```text
+/skill forge-hermes
+```
+
+然后输入：
+
+```text
+锻造一个天气 Agent
+```
+
+Forge 会先和你澄清：
+
+1. 谁会使用这个 Agent。
+2. 最小版本需要哪些功能。
+3. 哪些功能可以暂时去掉。
+4. 成功和失败分别是什么样。
+
+确认后，流程会逐步产出：
+
+```text
+docs/features.md
+
+docs/architecture.md
+
+docs/tasks.json
+
+docs/architecture-review.md
+
+docs/task-review.md
+
+docs/module-review.md
+
+docs/system-review.md
+
+docs/forge-state.json
+```
+
+你不需要自己记住当前应该做什么。Forge 根据 `forge-state.json` 判断阶段，并在审查通过后推进流程。
+
+## 七阶段流程
+
+### 1. clarify：需求澄清
+
+把模糊想法变成核心功能清单和澄清结论，写入 `docs/features.md`。
+
+重点确认：
+
+1. 真正要解决的问题。
+2. 用户和使用场景。
+3. 最小功能范围。
+4. 成功结果和异常分支。
+5. 哪些功能可以暂时不做。
+
+### 2. design：架构设计
+
+选择大、中、小方案，确定：
+
+1. 分层结构。
+2. 模块边界。
+3. 数据流。
+4. 输入输出契约。
+5. 状态和失败处理。
+6. 任务依赖关系。
+
+产出：
+
+```text
+docs/architecture.md
+docs/tasks.json
+```
+
+### 3. review：架构审查
+
+独立审查架构设计，不依赖设计过程中的对话上下文。
+
+架构审查使用五个裂隙切口：
+
+1. 数据流：数据从哪里来，最后到哪里去，中途有没有断掉。
+2. 失败模式：外部依赖、模型、内部模块和单条数据失败后会怎样。
+3. 状态切换：状态能否到达、退出和恢复，是否存在无限等待。
+4. 分层检查：模块是否放在正确层级，是否存在越层调用和职责错位。
+5. 运维隐患：依赖升级、日志增长、配置迁移、重新部署和长期运行风险。
+
+重大结构问题会退回 design，而不是带着裂缝进入实现阶段。
+
+### 4. build：任务审查与逐模块实现
+
+先审查任务是否按依赖拓扑排序、是否存在循环依赖、每个任务是否可以独立实现。
+
+通过后按模块逐任务实现。每个任务遵循 TDD：
+
+1. 先写测试。
+2. 确认测试失败。
+3. 写实现。
+4. 确认测试通过。
+5. 在任务范围内重构。
+
+每个任务还要保存测试结果和模块决策记录。
+
+### 5. module_review：模块基础审查
+
+当前模块全部完成后锁定，执行六轴基础审查：
+
+1. 正确性。
+2. 测试与验证。
+3. 安全。
+4. 可维护性。
+5. 性能与成本。
+6. 接口契约。
+
+六个审查轴必须全部出现。没有发现问题时，也必须说明检查了什么以及依据是什么；材料不足时必须明确标记待验证。
+
+### 6. system_review：Agent 系统审查
+
+全部模块通过模块基础审查后，执行系统级审查。
+
+system_review 固定使用六个一级维度：
+
+1. LLM：概率性任务和确定性任务是否分工正确。
+2. 上下文工程：技能、记忆、用户输入和轨迹是否正确分层。
+3. 工具：输入、输出、权限、副作用和失败是否可控。
+4. 约束：关键规则是否有优先级和权限层兜底。
+5. 验证：是否验证了真实结果，而不是只验证过程完成。
+6. 纠正：失败后是否重新规划，是否有重试上限和人工介入路径。
+
+成本、记忆、可靠性和评估作为二级检查项挂载到上述维度中，不再形成重复的平行框架。
+
+### 7. done：归档
+
+只有在必须改问题清零、核心路径和关键失败路径已经验证、系统级风险已经处理或明确记录后，才进入 done。
+
+Forge 会归档：
+
+1. 功能清单。
+2. 架构文档。
+3. 任务拆解。
+4. 各阶段审查报告。
+5. 测试结果。
+6. 运行事件和时间线。
+7. 后续运行建议。
+
+## 审查协议 5.1
+
+5.1 版本把审查分成三个层级：
+
+模块基础审查：检查单个模块的基础质量。
+
+Agent 系统审查：检查多个模块组成的 Agent 系统闭环。
+
+架构裂隙审查：寻找设计中没有覆盖的结构性缺口。
+
+每个问题都有唯一主归类：
+
+1. 只影响一个模块，归入 `module_review`。
+2. 影响多个模块协作，归入 `system_review`。
+3. 影响系统边界、模块组织或长期运行，归入 `architecture_gap`。
+
+每个审查结论都必须提供证据、检查依据或材料限制说明。
+
+没有真实数据时，不能伪造 Token、性能、成本、稳定性或测试结果，只能标记为风险推测或待验证。
+
+结构性问题不能只写“建议重构”，必须说明根因、影响、重构方案、迁移步骤和验证方式。
+
+问题严重度分为：
+
+必须改：不修复就不能进入下一阶段。
+
+建议改：当前可以继续，但存在明确改进价值。
+
+可忽略：记录即可，不阻塞当前流程。
+
+## 上下文工程特性
+
+渐进式披露：子 Agent 按当前阶段加载专业文件，不一次性读取全部技能。
+
+状态栏：brief 携带当前阶段、任务进度、审查轮次和失败原因。
+
+澄清持久化：clarify 的核心结论写入 `features.md`，后续阶段不依赖原始对话历史。
+
+复审模式：审查未通过时，重点复核上一轮必须改项和相邻区域，避免每次从零扫描。
+
+结构化状态：`forge-state.json` 保存当前阶段、当前模块、任务索引、审查计数、锁定状态和最近错误。
+
+## Hermes 与 Codex
+
+Forge 有两个平台版本：
+
+Forge for Hermes：使用 `delegate_task` 派发独立子 Agent，技能目录为：
+
+```text
+forge-hermes/
+forge-product-designer/
+forge-product-reviewer/
+forge-implementer/
+```
+
+Forge for Codex：使用 `.codex/skills/` 和 Codex 内部的子 Agent 调度机制。
+
+两个版本共用流程和审查标准。平台技能只负责各自的调用方式。
 
 ## 安装
 
-把这三个目录复制到 Hermes 技能目录：
+仓库根目录中的以下内容需要保持在同一个技能根目录结构中：
 
+```text
+CORE.md
+forge-hermes/
+forge-product-designer/
+forge-product-reviewer/
+forge-implementer/
 ```
-# Windows
-复制到 C:\Users\<你的用户名>\AppData\Local\hermes\skills\
 
-# Mac / Linux
-复制到 ~/.hermes/skills/
-```
+不要只复制 `forge-hermes` 一个目录。审查器和实现器依赖同级技能目录，所有阶段也依赖根目录的 `CORE.md`。
 
-最终目录结构：
+通用安装步骤：
 
-```
-~/.hermes/skills/
-├── forge-hermes/              # 编排器
+1. 将上述文件和目录复制到 Hermes 的技能根目录。
+2. 保持四个技能目录为同级目录。
+3. 保持 `CORE.md` 位于四个技能目录的上级目录。
+4. 启动 Hermes。
+5. 加载 `forge-hermes`。
+
+Hermes Desktop 的托管技能路径可能与独立 CLI 不同，请以当前 Hermes 版本的技能安装说明为准；不要直接照搬其他机器的绝对路径。
+
+安装后的结构应类似：
+
+```text
+<hermes-skills-root>/
+├── CORE.md
+├── forge-hermes/
 │   └── SKILL.md
-├── forge-product-designer/    # 设计方法论（渐进式披露参考）
+├── forge-product-designer/
 │   ├── clarify.md
 │   ├── design.md
 │   └── task-breakdown.md
-├── forge-product-reviewer/    # 审查器
+├── forge-product-reviewer/
 │   ├── SKILL.md
 │   ├── cut-table.md
 │   ├── architecture-review.md
@@ -53,50 +314,41 @@
 │   ├── module-review.md
 │   ├── system-review.md
 │   └── review-focus.md
-└── forge-implementer/         # 实现器
+└── forge-implementer/
     ├── SKILL.md
     └── debug-mode.md
 ```
 
-`CORE.md` 放在这四个技能目录的上级（或项目可访问的公共位置），供子 agent 读取核心标准定义。子 agent 按 brief 的"加载文件"段在各自技能目录下查找专业文件（渐进式披露）。
+## 当前限制
 
-## 使用
+1. Forge 目前是技能和流程编排器，不是独立 CLI。
+2. 实现质量仍然依赖模型、测试和审查输入的真实性。
+3. 审查报告不能替代真实运行验证。
+4. 大型项目可能需要人工处理架构回退和任务映射。
+5. PolyForm Noncommercial License 不允许商业使用。
 
-1. 在终端进入项目目录（或空目录）
-2. 启动 Hermes：`hermes`
-3. 加载技能：`/skill forge-hermes`
-4. 说"锻造一个XXX"开始
+## 贡献
 
-## 流程
+欢迎通过 GitHub 提交：
 
-锻造分七个阶段（状态机名）：
+1. 流程缺陷。
+2. 审查标准改进。
+3. Hermes 平台兼容性问题。
+4. 安装和文档问题。
+5. 真实项目中的失败案例。
 
-**clarify** 需求澄清 — Hermes 和你对话，把模糊想法变成明确需求，产出 features.md（含澄清结论）
-**design** 架构设计 — 基于需求设计架构，拆模块定接口，产出 architecture.md + tasks.json
-**review** 架构审查 — 自动派发审查子 agent，多轮对撞直到收敛，产出架构审查报告
-**build** 任务审查与逐模块实现 — 审查任务拆解，逐个模块派发实现子 agent，先写测试再实现，每任务小审
-**module_review** 中审 — 模块完成锁定，自动派发模块级审查
-**system_review** 大审 — 全部模块完成，自动派发系统级审查
-**done** 归档 — 记录项目总结、时间线和教训
+提交问题时请尽量提供：
 
-clarify 和 design 是你和 Hermes 对话完成。review、build、module_review、system_review 自动派发子 agent 完成。中审和大审由锁定条件强制触发，不能跳过。
+1. 使用的平台和版本。
+2. 当前阶段。
+3. `forge-state.json` 中的相关状态。
+4. 相关 brief 或审查报告。
+5. 可复现步骤。
 
-## 上下文工程特性
+不要在 Issue 或报告中提交 API key、密码和其他敏感信息。
 
-- **渐进式披露**：子 agent 不全量加载技能，按 brief 的"加载文件"段按需加载专业文件，降低 token 成本
-- **状态栏**：brief 携带运行状态（进度/连续失败/审查轮次/是否复审），子 agent 获得运行时感知
-- **澄清持久化**：clarify 的核心结论写入 features.md，design 从文件恢复上下文，不依赖对话历史
-- **复审模式**：审查未通过重审时，跳过全量扫描聚焦上一轮必须改项，提高复审效率
+## 许可证
 
-## 注意
+[PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/)
 
-- 审查阶段最多 5 轮，通过标准严格（必须改=0、建议改不增、无新严重担忧）
-- 每个实现任务都是 TDD（测试先行），必须亲眼看到测试失败
-- 中审/大审由流程条件自动锁住，用户无法跳过
-- git commit 格式：中文，"第X版，做了什么"
-
-## 许可
-
-[PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/)（与 Forge 一致，见 [LICENSE](./LICENSE) 和 [LICENSE_CN.txt](./LICENSE_CN.txt)）
-
-非商用许可：可自由使用、修改、分发，但不得用于商业目的。
+可以自由使用、修改和分发，但不得用于商业目的。
