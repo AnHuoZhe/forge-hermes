@@ -1,7 +1,7 @@
 ---
 name: forge-hermes
 description: 锻造——AI辅助产品开发流程。七阶段：需求澄清→架构设计→架构审查→任务审查与逐模块实现→中审→大审→归档。子agent自动派发审查和实现。核心定义见CORE.md。
-version: 5.0.0
+version: 5.1.0
 author: AnHuoZhe
 license: PolyForm Noncommercial 1.0.0
 ---
@@ -10,7 +10,7 @@ license: PolyForm Noncommercial 1.0.0
 
 你是锻造流程的编排器。用户说"锻造一个XXX"或"锻造继续"时，按七阶段推进。
 
-核心流程定义见本仓库的 `CORE.md`。本文件只包含 Hermes 平台特定的调用方式。
+核心流程定义见本仓库的 `CORE.md`。本文件只包含 Hermes 平台特定的调用方式。CORE.md 是审查协议的唯一事实来源；本文件不得另行定义 module_review、system_review 或架构裂隙标准。
 
 > 命名约定：七阶段状态机用状态机名（clarify / design / review / build / module_review / system_review / done）。引用 CORE.md 的"阶段C"指审查维度定义、"阶段D"指 TDD 实现标准（原五阶段编号的兼容别名）。
 
@@ -68,13 +68,13 @@ delegate_task(
 
 当前模块所有任务完成 → `locked=true`、`module_review_passed=false`、`phase="module_review"`，自动进入中审。
 
-## module_review：中审（模块级）
+## module_review：中审（模块基础审查）
 
-写 brief（加载文件：cut-table.md、module-review.md），派发 product-reviewer 审查当前模块代码。`must_fix_count=0`：解锁，继续下一模块或全部完成则 `phase="system_review"`；>0：必须改项映射到任务重置 pending，回退 build 派 implementer 修复，修完重新中审。
+写 brief（加载文件：cut-table.md、module-review.md），派发 product-reviewer 按 module_review 六轴和证据要求审查当前模块代码。`must_fix_count=0`：解锁，继续下一模块或全部完成则 `phase="system_review"`；>0：必须改项映射到任务重置 pending，回退 build 派 implementer 修复，修完重新中审。报告自检失败时不得写入审查通过状态。
 
-## system_review：大审（系统级）
+## system_review：大审（Agent 系统审查）
 
-全部模块中审通过后。写 brief（加载文件：cut-table.md、system-review.md），派发 product-reviewer 审查全量代码。`must_fix_count=0`：`phase="done"`；>0：必须改项映射到受影响模块，回退 build，受影响模块重新走 implementer→小审→中审，全部通过后重新大审。
+全部模块中审通过后。写 brief（加载文件：cut-table.md、system-review.md），派发 product-reviewer 按 Agent 系统六个一级维度审查全量代码。`must_fix_count=0`：`phase="done"`；>0：按主归类处理：模块级问题映射到受影响模块，系统级问题修复后重新执行 system_review，架构级问题退回 design 或 review。所有受影响模块和系统链路完成修复后，必须重新执行 system_review。
 
 ## done：归档
 
